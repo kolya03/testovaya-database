@@ -1,0 +1,64 @@
+Листинг запроса который предназначен для быстрого получения информации об остатке конкретного удобрения на конкретном складе:
+CREATE OR REPLACE FUNCTION get_fertilizer_stock(
+    p_warehouse_id INTEGER,
+    p_fertilizer_id INTEGER
+)
+RETURNS NUMERIC(15,2)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_quantity NUMERIC(15,2);
+BEGIN
+    SELECT quantity INTO v_quantity
+    FROM stock
+    WHERE warehouse_id = p_warehouse_id
+      AND fertilizer_id = p_fertilizer_id;
+    RETURN COALESCE(v_quantity, 0);
+END;
+$$;
+
+
+Листинг функции которая вычисляет среднюю цену, по которой закупалось конкретное удобрение на конкретном складе:
+CREATE OR REPLACE FUNCTION get_average_purchase_price(
+    p_fertilizer_id INTEGER,
+    p_warehouse_id INTEGER
+)
+RETURNS NUMERIC(12,2) 
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_avg_price NUMERIC(12,2);
+BEGIN
+    SELECT AVG(price_per_unit) INTO v_avg_price
+    FROM batches
+    WHERE fertilizer_id = p_fertilizer_id
+      AND warehouse_id = p_warehouse_id;
+    RETURN v_avg_price;
+END;
+$$;
+
+
+Листинг функции которая возвращает дату и цель последней операции расхода (выдачи) для указанного удобрения на указанном складе:
+CREATE OR REPLACE FUNCTION get_last_outcome_info(
+    p_fertilizer_id INTEGER,
+    p_warehouse_id INTEGER
+)
+RETURNS TEXT 
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_date TIMESTAMP;
+    v_purpose TEXT;
+BEGIN
+    SELECT operation_date, purpose INTO v_date, v_purpose
+    FROM outcome_operations
+    WHERE fertilizer_id = p_fertilizer_id
+      AND warehouse_id = p_warehouse_id
+    ORDER BY operation_date DESC 
+    LIMIT 1; 
+    IF NOT FOUND THEN
+        RETURN 'Операций расхода не было';
+    END IF;
+    RETURN 'Дата: ' || TO_CHAR(v_date, 'DD.MM.YYYY HH24:MI') || ', Цель: ' || v_purpose;
+END;
+$$;

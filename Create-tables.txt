@@ -1,0 +1,57 @@
+CREATE TABLE fertilizer_types (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT
+);
+CREATE TABLE units (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(20) NOT NULL UNIQUE
+);
+CREATE TABLE suppliers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    contact_person VARCHAR(255),
+    phone VARCHAR(20),
+    address TEXT,
+    email VARCHAR(100)
+);
+CREATE TABLE warehouses (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    location TEXT,
+    capacity NUMERIC(15,2) 
+);
+CREATE TABLE fertilizers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    type_id INTEGER NOT NULL REFERENCES fertilizer_types(id),
+    unit_id INTEGER NOT NULL REFERENCES units(id),
+    description TEXT,
+    active BOOLEAN DEFAULT TRUE
+);
+CREATE TABLE batches (
+    id SERIAL PRIMARY KEY,
+    fertilizer_id INTEGER NOT NULL REFERENCES fertilizers(id),
+    supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+    warehouse_id INTEGER NOT NULL REFERENCES warehouses(id),
+    batch_number VARCHAR(100) NOT NULL, 
+    production_date DATE,
+    expiration_date DATE,
+    quantity NUMERIC(15,2) NOT NULL, 
+    price_per_unit NUMERIC(12,2),     
+    total_price NUMERIC(15,2),        
+    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE stock (
+    id SERIAL PRIMARY KEY,
+    warehouse_id INTEGER NOT NULL REFERENCES warehouses(id),
+    fertilizer_id INTEGER NOT NULL REFERENCES fertilizers(id),
+    quantity NUMERIC(15,2) DEFAULT 0 CHECK (quantity >= 0)
+);
+CREATE TABLE outcome_operations (
+    id SERIAL PRIMARY KEY,
+    warehouse_id INTEGER NOT NULL REFERENCES warehouses(id),
+    fertilizer_id INTEGER NOT NULL REFERENCES fertilizers(id),
+    quantity NUMERIC(15,2) NOT NULL CHECK (quantity > 0),
+    operation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    purpose TEXT );

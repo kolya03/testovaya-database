@@ -1,0 +1,84 @@
+Листинг запроса который автоматически уменьшает остаток на складе в таблице stock (остатки), когда в таблицу outcome_operations (операции расхода) добавляется новая запись:
+CREATE OR REPLACE FUNCTION update_stock_after_outcome()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- уменьшаем остаток на складе на количество которое указано
+    UPDATE stock
+    SET quantity = quantity - NEW.quantity
+    WHERE warehouse_id = NEW.warehouse_id
+      AND fertilizer_id = NEW.fertilizer_id;
+    IF FOUND THEN – проверка на наличие
+        PERFORM quantity FROM stock
+        WHERE warehouse_id = NEW.warehouse_id AND fertilizer_id = NEW.fertilizer_id;
+        IF FOUND AND quantity < 0 THEN
+            RAISE EXCEPTION 'Ошибка: попытка списать больше, чем есть на складе.';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+-- Создание триггера
+CREATE TRIGGER trg_update_stock_on_outcome
+AFTER INSERT ON outcome_operations
+FOR EACH ROW
+EXECUTE FUNCTION update_stock_after_outcome();
+
+
+Листинг триггера который предотвращает ситуацию, когда на склад пытаются принять больше товара, чем позволяет его физическая вместимость:
+CREATE OR REPLACE FUNCTION check_warehouse_capacity()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_current_stock NUMERIC(15,2);
+    v_warehouse_capacity NUMERIC(15,2);
+BEGIN
+    SELECT capacity INTO v_warehouse_capacity
+    FROM warehouses
+    WHERE id = NEW.warehouse_id;
+    IF v_warehouse_capacity IS NULL THEN
+        RETURN NEW;
+    END IF;
+    SELECT COALESCE(quantity, 0) INTO v_current_stock
+    FROM stock
+    WHERE warehouse_id = NEW.warehouse_id AND fertilizer_id = NEW.fertilizer_id;
+    IF (v_current_stock + NEW.quantity) > v_warehouse_capacity THEN
+        RAISE EXCEPTION 'Ошибка: вместимость склада (% кг) будет превышена. Текущий остаток: % кг. Новая партия: % кг.',
+        v_warehouse_capacity, v_current_stock, NEW.quantity;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+batches
+CREATE TRIGGER trg_check_capacity_before_insert
+BEFORE INSERT ON batches
+FOR EACH ROW
+EXECUTE FUNCTION check_warehouse_capacity();
+
+
+Листинг триггера который записывает старое и новое значения полей name и active каждый раз, когда происходит обновление. История сохраняется в отдельную таблицу fertilizers_log:
+CREATE TABLE fertilizers_log (
+    id SERIAL PRIMARY KEY,
+    fertilizer_id INTEGER NOT NULL,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    changed_by TEXT, 
+    old_name VARCHAR(255),
+    new_name VARCHAR(255),
+    old_active BOOLEAN,
+    new_active BOOLEAN
+);
+CREATE OR REPLACE FUNCTION log_fertilizer_changes()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.name IS DISTINCT FROM NEW.name OR OLD.active IS DISTINCT FROM NEW.active THEN
+        INSERT INTO fertilizers_log (
+            fertilizer_id, old_name, new_name, old_active, new_active
+        ) VALUES (
+            OLD.id, OLD.name, NEW.name, OLD.active, NEW.active
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_log_fertilizer_changes_after_update
+AFTER UPDATE ON fertilizers
+FOR EACH ROW
+EXECUTE FUNCTION log_fertilizer_changes();
